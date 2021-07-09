@@ -1,5 +1,5 @@
-#Source: https://github.com/pycom/pycom-modbus/tree/master/uModbus (2018-07-16)
-#This file has been modified and differ from its source version.
+# Source: https://github.com/pycom/pycom-modbus/tree/master/uModbus (2018-07-16)
+# This file has been modified and differ from its source version.
 
 
 import uModBusFunctions as functions
@@ -7,6 +7,7 @@ import uModBusConst as Const
 import struct
 import socket
 import random
+
 
 class uModBusTCP:
 
@@ -77,7 +78,7 @@ class uModBusTCP:
 
         return status_pdu
 
-    def read_holding_registers(self, slave_addr, starting_addr, register_qty, signed = True):
+    def read_holding_registers(self, slave_addr, starting_addr, register_qty, signed=True):
         modbus_pdu = functions.read_holding_registers(starting_addr, register_qty)
 
         response = self._send_receive(slave_addr, modbus_pdu, True)
@@ -85,7 +86,7 @@ class uModBusTCP:
 
         return register_value
 
-    def read_input_registers(self, slave_addr, starting_address, register_quantity, signed = True):
+    def read_input_registers(self, slave_addr, starting_address, register_quantity, signed=True):
         modbus_pdu = functions.read_input_registers(starting_address, register_quantity)
 
         response = self._send_receive(slave_addr, modbus_pdu, True)

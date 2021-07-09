@@ -1,5 +1,5 @@
-#Source: https://github.com/pycom/pycom-modbus/tree/master/uModbus (2018-07-16)
-#This file has been modified and differ from its source version.
+# Source: https://github.com/pycom/pycom-modbus/tree/master/uModbus (2018-07-16)
+# This file has been modified and differ from its source version.
 
 import uModBusFunctions as functions
 import uModBusConst as Const
@@ -7,26 +7,12 @@ from machine import UART
 from machine import Pin
 import struct
 import time
-import machine
+
 
 class uModBusSerial:
 
-    def __init__(self, uart_id, baudrate=9600, data_bits=8, stop_bits=1, parity=None, pins=None, ctrl_pin=None):
-        pinsLen=len(pins)
-        if pins==None or pinsLen<2 or pinsLen>4 or pinsLen==3:
-            raise ValueError('pins should contain pin names/numbers for: tx, rx, [rts, cts]')
-        tx=pins[0]
-        rx=pins[1]
-        if pinsLen==4:
-            rts=pins[2]
-            cts=pins[3]
-            self._uart = UART(uart_id, baudrate=baudrate, bits=data_bits, parity=parity, \
-                          stop=stop_bits, timeout_char=10, tx=tx, rx=rx, rts=rts, cts=cts)
-        else:
-            self._uart = UART(uart_id, baudrate=baudrate, bits=data_bits, parity=parity, \
-                            stop=stop_bits, timeout_char=10, tx=tx, rx=rx)
-        #self._uart = UART(uart_id, baudrate=baudrate, bits=data_bits, parity=parity, \
-        #                  stop=stop_bits, timeout_chars=10, pins=pins)
+    def __init__(self, uart: UART, baudrate=9600, data_bits=8, stop_bits=0, ctrl_pin=None):
+        self._uart = uart
         if ctrl_pin is not None:
             self._ctrlPin = Pin(ctrl_pin, mode=Pin.OUT)
         else:
@@ -39,7 +25,7 @@ class uModBusSerial:
         for char in data:
             crc = (crc >> 8) ^ Const.CRC16_TABLE[((crc) ^ char) & 0xFF]
 
-        return struct.pack('<H',crc)
+        return struct.pack('<H', crc)
 
     def _bytes_to_bool(self, byte_list):
         bool_list = []
@@ -73,7 +59,7 @@ class uModBusSerial:
         for x in range(1, 40):
             if self._uart.any():
                 response.extend(self._uart.read())
-                #response.extend(self._uart.readall())
+                # response.extend(self._uart.readall())
                 # variable length function codes may require multiple reads
                 if self._exit_read(response):
                     break
@@ -95,8 +81,6 @@ class uModBusSerial:
             self._ctrlPin(1)
         self._uart.write(serial_pdu)
         if self._ctrlPin:
-            while not self._uart.wait_tx_done(2):
-                machine.idle()
             time.sleep_ms(1 + self.char_time_ms)
             self._ctrlPin(0)
 
@@ -120,7 +104,7 @@ class uModBusSerial:
 
         hdr_length = (Const.RESPONSE_HDR_LENGTH + 1) if count else Const.RESPONSE_HDR_LENGTH
 
-        return response[hdr_length : len(response) - Const.CRC_LENGTH]
+        return response[hdr_length: len(response) - Const.CRC_LENGTH]
 
     def read_coils(self, slave_addr, starting_addr, coil_qty):
         modbus_pdu = functions.read_coils(starting_addr, coil_qty)
@@ -191,10 +175,9 @@ class uModBusSerial:
         return operation_status
 
     def close(self):
-        if self._uart == None:
+        if self._uart is None:
             return
         try:
             self._uart.deinit()
         except Exception:
             pass
-
