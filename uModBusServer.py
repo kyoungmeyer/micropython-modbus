@@ -109,6 +109,13 @@ class uModBusServer:
     def _decode(self, fx):
         return self.__fx_mapper[fx]
 
+    def _bytes_to_bool(self, byte_list):
+        bool_list = []
+        for index, byte in enumerate(byte_list):
+            bool_list.extend([bool(byte & (1 << n)) for n in range(8)])
+
+        return bool_list
+
     def validate(self, fx, address, count=1):
         raise NotImplementedException("validate context values")
 
@@ -129,6 +136,11 @@ class uModBusSerialServer(uModBusServer):
         self.databank['c'] = kwargs.get('co', uModBusSequentialDataBank.create())
         self.databank['i'] = kwargs.get('ir', uModBusSequentialDataBank.create())
         self.databank['h'] = kwargs.get('hr', uModBusSequentialDataBank.create())
+
+    def _send_error_response(self, fx, exception):
+        response = struct.pack('>BBB', self.server_id, Const.ERROR_BIAS + fx, exception)
+        response += self._calculate_crc16(response)
+        self.uart.write(response)
 
     def validate(self, fx, address, count=1):
         _logger.debug("validate: fc-[%d] address-%d: count-%d" % (fx, address,
@@ -151,23 +163,30 @@ class uModBusSerialServer(uModBusServer):
             buffer = self.uart.read()
             _logger.debug("Raw Input: {}".format(buffer))
             if len(buffer) > 7:
-                server_id, fx, address, count = struct.unpack('>BBHH', buffer[:6])
+                server_id, fx = struct.unpack('>BB', buffer[:2])
                 if server_id != self.server_id:
                     return None
                 crc = buffer[-2:]
                 if (crc != self._calculate_crc16(buffer[:-2])):
                     # TODO: Do something for the error case
                     _logger.error("CRC Error: {} != {}".format(crc, self._calculate_crc16(buffer[:-2])))
+                    return None
 
                 if fx == Const.READ_HOLDING_REGISTERS or fx == Const.READ_INPUT_REGISTER:
                     _logger.debug("Read {} Register".format(fx))
+                    address, count = struct.unpack('>HH', buffer[2:6])
                     if self.validate(fx, address, count):
                         response = struct.pack('>BBB', self.server_id, fx, count*2)
-                        response += struct.pack('>' + 'H' * count, *[x for x in self.getValues(fx, address, count)])
+                        rsp_values = self.getValues(fx, address, count)
+                        _logger.debug(rsp_values)
+                        response += struct.pack('>' + 'H' * count, *[x for x in rsp_values])
                         response += self._calculate_crc16(response)
                         self.uart.write(response)
-                if fx == Const.READ_COILS or fx == Const.READ_DISCRETE_INPUTS:
+                    else:
+                        self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+                elif fx == Const.READ_COILS or fx == Const.READ_DISCRETE_INPUTS:
                     _logger.debug("Read {} Register".format(fx))
+                    address, count = struct.unpack('>HH', buffer[2:6])
                     if self.validate(fx, address, count):
                         response = struct.pack('>BBB', self.server_id, fx, (count + 7)//8)
                         values = self.getValues(fx, address, count)
@@ -179,6 +198,46 @@ class uModBusSerialServer(uModBusServer):
                         response += payload
                         response += self._calculate_crc16(response)
                         self.uart.write(response)
+                    else:
+                        self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+                elif fx == Const.WRITE_SINGLE_COIL:
+                    _logger.debug("Write Single Coil")
+                    address, value = struct.unpack('>HH', buffer[2:6])
+                    if value not in [0x00, 0xFF00]:
+                        self._send_error_response(fx, Const.ILLEGAL_DATA_VALUE)
+                        return None
+                    if self.validate(fx, address, 1):
+                        self.setValues(fx, address, ([False] if value == 0x0000 else [True]))
+                        self.uart.write(buffer)
+                    else:
+                        self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+                elif fx == Const.WRITE_SINGLE_REGISTER:
+                    _logger.debug("Write Single Register")
+                    address, value = struct.unpack('>HH', buffer[2:6])
+                    if self.validate(fx, address, 1):
+                        self.setValues(fx, address, [value])
+                        self.uart.write(buffer)
+                    else:
+                        self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+                elif fx == Const.WRITE_MULTIPLE_COILS:
+                    address, outputs, count = struct.unpack('>HHB', buffer[2:7])
+                    _logger.debug("Write Multiple ({}) Coils".format(outputs))
+                    _logger.debug("Address: {}, Outputs: {}, Count: {}".format(address, outputs, count))
+                    pass
+                elif fx == Const.WRITE_MULTIPLE_REGISTERS:
+                    address, count = struct.unpack('>HH', buffer[2:6])
+                    _logger.debug("Write Multiple ({}) Registers".format(count))
+                    values = struct.unpack('>' + 'H'*count, buffer[7:])
+                    if self.validate(fx, address, count):
+                        self.setValues(fx, address, list(values))
+                        response = struct.pack('>BBHH', self.server_id, fx, address, count)
+                        response += self._calculate_crc16(response)
+                        self.uart.write(response)
+                    else:
+                        self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+                else:
+                    # Error Not Supported
+                    self._send_error_response(fx, Const.ILLEGAL_FUNCTION)
 
         else:
             return None
