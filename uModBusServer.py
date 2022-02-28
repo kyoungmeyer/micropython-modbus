@@ -126,6 +126,18 @@ class uModBusServer:
         return bool_list
 
     @classmethod
+    def _bits_to_bool_list(cls, data, num_bits):
+        ret_list = []
+        current_bit = 0
+        for elem in data:
+            for bit in range(8):
+                ret_list.append(bool((elem >> bit) & 1))
+                current_bit += 1
+                if current_bit == num_bits:
+                    return ret_list
+        return None  # Should never reach, just to satisfy linter
+
+    @classmethod
     def validate(cls, fx, address, count=1):
         raise NotImplementedException("validate context values")
 
@@ -181,7 +193,7 @@ class uModBusSerialServer(uModBusSequentialServer):
                 response = struct.pack('>BBB', self.server_id, fx, count*2)
                 rsp_values = self.getValues(fx, address, count)
                 _logger.debug(rsp_values)
-                response += struct.pack('>' + 'H' * count, *list(rsp_values))
+                response += struct.pack('>{}H'.format(count), *list(rsp_values))
                 response += self._calculate_crc16(response)
                 self.uart.write(response)
             else:
@@ -203,41 +215,56 @@ class uModBusSerialServer(uModBusSequentialServer):
             else:
                 self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
 
-    def handleWrite(self, fx, buffer):
-        if fx == Const.WRITE_SINGLE_COIL:
-            _logger.debug("Write Single Coil")
-            address, value = struct.unpack('>HH', buffer[2:6])
-            if value not in [0x00, 0xFF00]:
-                self._send_error_response(fx, Const.ILLEGAL_DATA_VALUE)
-                return
-            if self.validate(fx, address, 1):
-                self.setValues(fx, address, ([False] if value == 0x0000 else [True]))
-                self.uart.write(buffer)
+    def handleWriteSingle(self, fx, buffer):
+        _logger.debug("Write Single Coil or Register")
+        address, value = struct.unpack('>HH', buffer[2:6])
+        if self.validate(fx, address, 1):
+            if fx == Const.WRITE_SINGLE_COIL:
+                if value in [0x00, 0xFF00]:
+                    self.setValues(fx, address, ([False] if value == 0x0000 else [True]))
+                else:
+                    self._send_error_response(fx, Const.ILLEGAL_DATA_VALUE)
             else:
-                self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
-        elif fx == Const.WRITE_SINGLE_REGISTER:
-            _logger.debug("Write Single Register")
-            address, value = struct.unpack('>HH', buffer[2:6])
-            if self.validate(fx, address, 1):
                 self.setValues(fx, address, [value])
-                self.uart.write(buffer)
-            else:
-                self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
-        elif fx == Const.WRITE_MULTIPLE_COILS:
+            self.uart.write(buffer)
+        else:
+            self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+
+    def handleWriteMultiple(self, fx, buffer):
+        if fx == Const.WRITE_MULTIPLE_COILS:
             address, outputs, count = struct.unpack('>HHB', buffer[2:7])
             _logger.debug("Write Multiple ({}) Coils".format(outputs))
-            _logger.debug("Address: {}, Outputs: {}, Count: {}".format(address, outputs, count))
-        elif fx == Const.WRITE_MULTIPLE_REGISTERS:
-            address, count = struct.unpack('>HH', buffer[2:6])
-            _logger.debug("Write Multiple ({}) Registers".format(count))
-            values = struct.unpack('>' + 'H'*count, buffer[7:])
-            if self.validate(fx, address, count):
+            values = struct.unpack('>{}B'.format(count), buffer[7:])
+            _logger.debug("Values to set {}".format(values))
+            if self.validate(fx, address, outputs):
+                val_list = self._bits_to_bool_list(values, outputs)
+                _logger.debug("Bool values to set {}".format(val_list))
+                if val_list is not None:
+                    self.setValues(fx, address, val_list)
+                    response = struct.pack('>BBHH', self.server_id, fx, address, outputs)
+                    response += self._calculate_crc16(response)
+                    self.uart.write(response)
+                else:
+                    self._send_error_response(fx, Const.ILLEGAL_DATA_VALUE)
+            else:
+                self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+        else:  # Const.WRITE_MULTIPLE_REGISTERS
+            address, num_regs, _count = struct.unpack('>HHB', buffer[2:7])
+            _logger.debug("Write Multiple ({}) Registers".format(num_regs))
+            values = struct.unpack('>{}H'.format(num_regs), buffer[7:])
+            if self.validate(fx, address, num_regs):
                 self.setValues(fx, address, list(values))
-                response = struct.pack('>BBHH', self.server_id, fx, address, count)
+                response = struct.pack('>BBHH', self.server_id, fx, address, num_regs)
                 response += self._calculate_crc16(response)
                 self.uart.write(response)
             else:
                 self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
+
+    def handleWrite(self, fx, buffer):
+        if fx in (Const.WRITE_SINGLE_COIL, Const.WRITE_SINGLE_REGISTER):
+            self.handleWriteSingle(fx, buffer)
+        else:
+            self.handleWriteMultiple(fx, buffer)
 
     def handleRequest(self, fx, buffer):
         if fx in (Const.READ_COILS, Const.READ_DISCRETE_INPUTS, Const.READ_HOLDING_REGISTERS, Const.READ_INPUT_REGISTER):
