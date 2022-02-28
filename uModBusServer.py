@@ -138,21 +138,14 @@ class uModBusServer:
         raise NotImplementedException("set context values")
 
 
-class uModBusSerialServer(uModBusServer):
-    def __init__(self, uart, baudrate, server_id, **kwargs):
-        self.uart = uart
-        self.baudrate = baudrate
+class uModBusSequentialServer(uModBusServer):
+    def __init__(self, server_id, **kwargs):
         self.server_id = server_id
         self.databank = {}
         self.databank['d'] = kwargs.get('di', uModBusSequentialDataBank.create())
         self.databank['c'] = kwargs.get('co', uModBusSequentialDataBank.create())
         self.databank['i'] = kwargs.get('ir', uModBusSequentialDataBank.create())
         self.databank['h'] = kwargs.get('hr', uModBusSequentialDataBank.create())
-
-    def _send_error_response(self, fx, exception):
-        response = struct.pack('>BBB', self.server_id, Const.ERROR_BIAS + fx, exception)
-        response += self._calculate_crc16(response)
-        self.uart.write(response)
 
     def validate(self, fx, address, count=1):
         _logger.debug("validate: fc-[%d] address-%d: count-%d" % (fx, address,
@@ -167,6 +160,18 @@ class uModBusSerialServer(uModBusServer):
     def setValues(self, fx, address, values):
         _logger.debug("setValues[%d] %d:%d" % (fx, address, len(values)))
         self.databank[self._decode(fx)].setValues(address, values)
+
+
+class uModBusSerialServer(uModBusSequentialServer):
+    def __init__(self, uart, baudrate, server_id, **kwargs):
+        self.uart = uart
+        self.baudrate = baudrate
+        super().__init__(server_id, **kwargs)
+
+    def _send_error_response(self, fx, exception):
+        response = struct.pack('>BBB', self.server_id, Const.ERROR_BIAS + fx, exception)
+        response += self._calculate_crc16(response)
+        self.uart.write(response)
 
     def handleRead(self, fx, buffer):
         if fx in (Const.READ_HOLDING_REGISTERS, Const.READ_INPUT_REGISTER):
