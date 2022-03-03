@@ -1,4 +1,4 @@
-from uModBusServer import uModBusSerialServer
+from uModBusSerialServer import uModBusSerialServer
 from uModBusServer import uModBusSequentialDataBank
 import pyb
 
@@ -10,5 +10,8 @@ modbus = uModBusSerialServer(uart, 9600, 0,
                              ir=uModBusSequentialDataBank(1000, [1]*10))
 
 while True:
-    modbus.update()
-    pyb.delay(250)
+    try:
+        modbus.update()
+        pyb.delay(250)
+    except KeyboardInterrupt:
+        break
