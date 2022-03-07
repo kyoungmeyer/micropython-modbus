@@ -55,3 +55,37 @@ while True:
     except KeyboardInterrupt:
         break
 ```
+### Socket Server
+```python
+import network
+import pyb
+from uModBusSocketServer import uModBusSocketServer
+from uModBusServer import uModBusSequentialDataBank
+
+### Initialize chosen nic.
+### This example uses the EMAC, Inc. CutiPy with RS9116
+### A network interface must be registerd for the socket module to work
+
+nic = network.RS9116()
+nic.init()
+print("Connecting...")
+nic.connect(ssid, psk)
+print("Connected.")
+host = nic.ifconfig()[0]
+port = 502
+
+###
+###
+
+modbus = uModBusSocketServer(host, port, 0,
+                             di=uModBusSequentialDataBank(0, [0]*10),
+                             co=uModBusSequentialDataBank(100, [1, 0, 1, 0, 1, 0, 1, 0, 1, 0]),
+                             hr=uModBusSequentialDataBank(200, [42]*100),
+                             ir=uModBusSequentialDataBank(1000, [1]*10))
+while True:
+    try:
+        modbus.update()
+        pyb.delay(250)
+    except KeyboardInterrupt:
+        break
+```
