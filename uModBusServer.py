@@ -149,7 +149,7 @@ class uModBusServer:
     def setValues(cls, fx, address, values):
         raise NotImplementedException("set context values")
 
-    def _send_data(self, data):
+    def _send_data(self, fx, data):
         raise NotImplementedException("Send data")
 
     def _send_error_response(self, fx, exception):
@@ -184,18 +184,18 @@ class uModBusSequentialServer(uModBusServer):
             _logger.debug("Read {} Register".format(fx))
             address, count = struct.unpack('>HH', buffer[:4])
             if self.validate(fx, address, count):
-                response = struct.pack('>BBB', self.server_id, fx, count*2)
+                response = struct.pack('>B', count*2)
                 rsp_values = self.getValues(fx, address, count)
                 _logger.debug(rsp_values)
                 response += struct.pack('>{}H'.format(count), *list(rsp_values))
-                self._send_data(response)
+                self._send_data(fx, response)
             else:
                 self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
         else:
             _logger.debug("Read {} Register".format(fx))
             address, count = struct.unpack('>HH', buffer[:4])
             if self.validate(fx, address, count):
-                response = struct.pack('>BBB', self.server_id, fx, (count + 7)//8)
+                response = struct.pack('>B', (count + 7)//8)
                 values = self.getValues(fx, address, count)
                 payload = 0
                 for digit in reversed(values):
@@ -203,7 +203,7 @@ class uModBusSequentialServer(uModBusServer):
                 payload = payload.to_bytes((count+7)//8, 'little')
                 # payload = int("".join(str(x) for x in values), 2).to_bytes((count+7)//8, 'big')
                 response += payload
-                self._send_data(response)
+                self._send_data(fx, response)
             else:
                 self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
 
@@ -218,8 +218,8 @@ class uModBusSequentialServer(uModBusServer):
                     self._send_error_response(fx, Const.ILLEGAL_DATA_VALUE)
             else:
                 self.setValues(fx, address, [value])
-            response = struct.pack('>BBHH', self.server_id, fx, address, value)
-            self._send_data(response)
+            response = struct.pack('>HH', address, value)
+            self._send_data(fx, response)
         else:
             self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
 
@@ -234,8 +234,8 @@ class uModBusSequentialServer(uModBusServer):
                 _logger.debug("Bool values to set {}".format(val_list))
                 if val_list is not None:
                     self.setValues(fx, address, val_list)
-                    response = struct.pack('>BBHH', self.server_id, fx, address, outputs)
-                    self._send_data(response)
+                    response = struct.pack('>HH', address, outputs)
+                    self._send_data(fx, response)
                 else:
                     self._send_error_response(fx, Const.ILLEGAL_DATA_VALUE)
             else:
@@ -246,8 +246,8 @@ class uModBusSequentialServer(uModBusServer):
             values = struct.unpack('>{}H'.format(num_regs), buffer[5:])
             if self.validate(fx, address, num_regs):
                 self.setValues(fx, address, list(values))
-                response = struct.pack('>BBHH', self.server_id, fx, address, num_regs)
-                self._send_data(response)
+                response = struct.pack('>HH', address, num_regs)
+                self._send_data(fx, response)
             else:
                 self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
 

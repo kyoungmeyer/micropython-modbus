@@ -13,13 +13,14 @@ class uModBusSerialServer(uModBusSequentialServer):
         self.baudrate = baudrate
         super().__init__(server_id, **kwargs)
 
-    def _send_data(self, data):
-        response = data + self._calculate_crc16(data)
+    def _send_data(self, fx, data):
+        head = struct.pack('>BB', self.server_id, fx)
+        response = head + data + self._calculate_crc16(head + data)
         self.uart.write(response)
 
     def _send_error_response(self, fx, exception):
-        response = struct.pack('>BBB', self.server_id, Const.ERROR_BIAS + fx, exception)
-        self._send_data(response)
+        response = struct.pack('>B', exception)
+        self._send_data(Const.ERROR_BIAS+fx, response)
 
     def update(self):
         if self.uart.any():
