@@ -218,7 +218,8 @@ class uModBusSequentialServer(uModBusServer):
                     self._send_error_response(fx, Const.ILLEGAL_DATA_VALUE)
             else:
                 self.setValues(fx, address, [value])
-            self._send_data(buffer)
+            response = struct.pack('>BBHH', self.server_id, fx, address, value)
+            self._send_data(response)
         else:
             self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
 
