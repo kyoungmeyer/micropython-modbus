@@ -37,5 +37,6 @@ class uModBusSerialServer(uModBusSequentialServer):
                     # In the event of a CRC error, nothing is returned, and the client is allowed to time out.
                     _logger.error("CRC Error: {} != {}".format(crc, self._calculate_crc16(buffer[:-2])))
                     return None
-                return self.handleRequest(fx, buffer)
+                payload = buffer[2:-2]
+                return self.handleRequest(fx, payload)
         return None

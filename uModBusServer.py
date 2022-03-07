@@ -182,7 +182,7 @@ class uModBusSequentialServer(uModBusServer):
     def handleRead(self, fx, buffer):
         if fx in (Const.READ_HOLDING_REGISTERS, Const.READ_INPUT_REGISTER):
             _logger.debug("Read {} Register".format(fx))
-            address, count = struct.unpack('>HH', buffer[2:6])
+            address, count = struct.unpack('>HH', buffer[:4])
             if self.validate(fx, address, count):
                 response = struct.pack('>BBB', self.server_id, fx, count*2)
                 rsp_values = self.getValues(fx, address, count)
@@ -193,7 +193,7 @@ class uModBusSequentialServer(uModBusServer):
                 self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
         else:
             _logger.debug("Read {} Register".format(fx))
-            address, count = struct.unpack('>HH', buffer[2:6])
+            address, count = struct.unpack('>HH', buffer[:4])
             if self.validate(fx, address, count):
                 response = struct.pack('>BBB', self.server_id, fx, (count + 7)//8)
                 values = self.getValues(fx, address, count)
@@ -209,7 +209,7 @@ class uModBusSequentialServer(uModBusServer):
 
     def handleWriteSingle(self, fx, buffer):
         _logger.debug("Write Single Coil or Register")
-        address, value = struct.unpack('>HH', buffer[2:6])
+        address, value = struct.unpack('>HH', buffer[:4])
         if self.validate(fx, address, 1):
             if fx == Const.WRITE_SINGLE_COIL:
                 if value in [0x00, 0xFF00]:
@@ -224,9 +224,9 @@ class uModBusSequentialServer(uModBusServer):
 
     def handleWriteMultiple(self, fx, buffer):
         if fx == Const.WRITE_MULTIPLE_COILS:
-            address, outputs, count = struct.unpack('>HHB', buffer[2:7])
+            address, outputs, count = struct.unpack('>HHB', buffer[:5])
             _logger.debug("Write Multiple ({}) Coils".format(outputs))
-            values = struct.unpack('>{}B'.format(count), buffer[7:])
+            values = struct.unpack('>{}B'.format(count), buffer[5:])
             _logger.debug("Values to set {}".format(values))
             if self.validate(fx, address, outputs):
                 val_list = self._bits_to_bool_list(values, outputs)
@@ -240,9 +240,9 @@ class uModBusSequentialServer(uModBusServer):
             else:
                 self._send_error_response(fx, Const.ILLEGAL_DATA_ADDRESS)
         else:  # Const.WRITE_MULTIPLE_REGISTERS
-            address, num_regs, _count = struct.unpack('>HHB', buffer[2:7])
+            address, num_regs, _count = struct.unpack('>HHB', buffer[:5])
             _logger.debug("Write Multiple ({}) Registers".format(num_regs))
-            values = struct.unpack('>{}H'.format(num_regs), buffer[7:])
+            values = struct.unpack('>{}H'.format(num_regs), buffer[5:])
             if self.validate(fx, address, num_regs):
                 self.setValues(fx, address, list(values))
                 response = struct.pack('>BBHH', self.server_id, fx, address, num_regs)
